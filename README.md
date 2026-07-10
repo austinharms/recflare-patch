@@ -38,7 +38,9 @@ _Looking for a custom RecNet server?_ Try https://github.com/djdevin/recflare
 1. Download the game using https://github.com/SteamRE/DepotDownloader. The manifest ID is `7859140924515540835`.  
 Example: `depotdownloader -app 471710 -depot 471711 -manifest 7859140924515540835`
 **You must use this specific version.**
-2. Install BepInEx to the game. See https://docs.bepinex.dev/articles/user_guide/installation/index.html. **Note that you must use version 6!**
+3. Install BepInEx to the game. See https://docs.bepinex.dev/articles/user_guide/installation/index.html. **Note that you must use version 6!**
+
+Alternatively, use the [RecFlare client](https://github.com/djdevin/recflare-client)
 
 ### From release
 
