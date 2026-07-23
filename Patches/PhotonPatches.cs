@@ -7,7 +7,10 @@ namespace RecNetPlugin.Patches;
 /**
     Patches Photon to use the App IDs and server hostname/port specified in the plugin config.
  */
-[HarmonyPatch(typeof(GPFPFDBGCEK), "AMOHMPKKGHL")]
+// Obfuscated names shift every game build. Re-resolve by signature: the target is the only
+// instance, 0-param method returning Photon.Realtime.AppSettings in Assembly-CSharp.
+// 20230414 build: HPEENKELKDJ.MGKINLFMJLB (was LEALBOODIEE.GBNKOFMAJPA, was GPFPFDBGCEK.AMOHMPKKGHL).
+[HarmonyPatch(typeof(HPEENKELKDJ), "MGKINLFMJLB")]
 public class PhotonPatches
 {
     [HarmonyPostfix]
