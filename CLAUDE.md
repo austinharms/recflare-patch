@@ -96,34 +96,29 @@ The client verifies images against an RSA public key whose modulus is a string l
 `global-metadata.dat`. Patching that literal is fragile; **don't**. Hook the framework instead.
 
 The decisive observation: the literal base64-decodes to **exactly 256 bytes and does not start with
-`0x30`**, so it is a *raw* 2048-bit modulus, not a DER/SPKI blob. The client therefore cannot hand it
-to a key-import API — it has to base64-decode it and hand-build `RSAParameters { Modulus, Exponent }`.
-Those are plain `mscorlib` calls with unobfuscated names. Confirmed working at runtime: images load
-with no signing check.
+`0x30`**, so it is a *raw* 2048-bit modulus, not a DER/SPKI blob. The client base64-decodes it and
+hand-builds `RSAParameters`, then verifies with `mscorlib` RSA — plain unobfuscated names. Rather than
+touch the modulus, we just force the verify to succeed. Confirmed working at runtime: images load with
+no signing check.
 
 `Patches/ImageSigningPatch.cs` hooks, all in `Il2Cppmscorlib.dll`:
 
 | Hook | Purpose |
 | --- | --- |
-| `Convert.FromBase64String` | catches the literal regardless of which crypto stack consumes it (guarded by a length check first — it runs for every base64 decode in the game) |
-| `RSACryptoServiceProvider.ImportParameters` | swaps the modulus in place (both keys are 2048-bit, so no realloc) |
-| `RSACryptoServiceProvider.VerifyData` / `VerifyHash` ×2 | forces the verify to succeed |
+| `RSACryptoServiceProvider.VerifyData` / `VerifyHash` ×2 | **the fix:** forces the verify to succeed |
 
-Config lives in `[Signing]`. `Disable Signature Verification` defaults **true** — that's the shipped
-behaviour, since this setup doesn't use image signing. `Signing Modulus Override` is the secondary
-path for a deployment that *does* want signed images (keeps real verification, against your keypair).
+Config lives in `[Signing]`, a single knob: `Disable Signature Verification` defaults **true** —
+that's the shipped behaviour, since this setup doesn't use image signing. The patch only *removes* the
+check (forces verify-true); it does not swap in a replacement key.
 
 Two things to remember:
 
 - **Blast radius:** forcing verify-true affects *all* mscorlib RSA verification, not just images.
   BestHTTP's TLS uses its own bundled BouncyCastle, so cert validation appears unaffected — inferred
   from assembly layout, not proven. Keep it behind the config knob.
-- **If it ever stops working:** the patch logs `[SIG] stock modulus seen at <hook>` on first sighting.
-  No such line = verification moved to `BestHTTP.SecureProtocol.Org.BouncyCastle`; the equivalent
-  hooks there are `RsaKeyParameters..ctor(bool, BigInteger, BigInteger)` and the **concrete**
-  `RsaDigestSigner`/`PssSigner.VerifySignature` (not the abstract `ISigner` — gotcha 3).
-- The stock modulus is hardcoded in the patch. If a future build re-rolls the key, the match silently
-  stops firing; that log line is how you'd notice.
+- **If it ever stops working:** images failing to load with the knob on means verification moved off
+  mscorlib RSA onto `BestHTTP.SecureProtocol.Org.BouncyCastle`; the equivalent hooks there are the
+  **concrete** `RsaDigestSigner`/`PssSigner.VerifySignature` (not the abstract `ISigner` — gotcha 3).
 
 ## Inspecting the game
 

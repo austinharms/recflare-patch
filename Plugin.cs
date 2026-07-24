@@ -29,7 +29,6 @@ public class Plugin : BasePlugin
     public static ConfigEntry<string> DeviceIdResponseOverride { get; private set; }
     public static ConfigEntry<int> DeviceIdResponseStatus { get; private set; }
     public static ConfigEntry<bool> DisableSignatureVerification { get; private set; }
-    public static ConfigEntry<string> SigningModulusOverride { get; private set; }
 
     private static bool _corruptDone;
 
@@ -52,8 +51,7 @@ public class Plugin : BasePlugin
         DeviceIdResponseOverride = Config.Bind("Advanced", "DeviceId Response Override", "", "Replace the body of the PlayerReporting/v1/deviceId response with this text, to test what shape the client will accept. Empty = leave the server's response alone.");
         DeviceIdResponseStatus = Config.Bind("Advanced", "DeviceId Response Status", 200, "HTTP status to force on the PlayerReporting/v1/deviceId response. Only applies when the override body is set.");
 
-        DisableSignatureVerification = Config.Bind("Signing", "Disable Signature Verification", true, "Force RSA signature verification to succeed (ON by default), so the client stops checking that images are signed with Rec Room's private key. This is what lets a self-hosted server serve its own images without the baked-in modulus matching. Set false only if you actually want signed images, in which case use 'Signing Modulus Override' instead. NOTE: this forces ALL mscorlib RSA verification to pass, not just image signatures.");
-        SigningModulusOverride = Config.Bind("Signing", "Signing Modulus Override", "", "Optional alternative to disabling verification: your own RSA public modulus, base64, RAW 2048-bit (256 bytes decoded) — NOT a PEM/DER key. When set, it is substituted for the modulus baked into global-metadata.dat and real verification still runs, so images stay signed with your keypair. Redundant while 'Disable Signature Verification' is true. Empty = leave the stock modulus alone.");
+        DisableSignatureVerification = Config.Bind("Signing", "Disable Signature Verification", true, "Force RSA signature verification to succeed (ON by default), so the client stops checking that images are signed with Rec Room's private key. This is what lets a self-hosted server serve its own images without the baked-in modulus matching. NOTE: this forces ALL mscorlib RSA verification to pass, not just image signatures.");
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly);
 

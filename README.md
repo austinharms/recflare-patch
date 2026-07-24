@@ -123,11 +123,7 @@ Inside `config`, edit the `net.rec.plugin.cfg` file and update as needed:
 
 **[Signing]**
 - `Disable Signature Verification` — stops the client checking that images are signed with Rec Room's
-  private key, so your own server can serve images. **On by default**; leave it alone unless you
-  specifically want signed images.
-- `Signing Modulus Override` — only for setups that *do* want image signing: your own RSA public
-  modulus (base64, raw 2048-bit — not a PEM/DER key). Keeps real verification, against your keypair.
-  Leave empty otherwise.
+  private key, so your own server can serve images. **On by default**; leave it alone.
 
 **[Advanced]**
 - `Enabled Advanced Settings` — must be `true` to apply the custom Photon name server / port below.
