@@ -2,15 +2,15 @@
 
 A [BepInEx 6](https://github.com/BepInEx/BepInEx) (IL2CPP) plugin that points the Rec Room client at a self-hosted / private server.
 
-It does this entirely client-side with [Harmony](https://harmony.pardeike.net/) patches — no game files are modified on disk (except global-metadata.dat - needed for image signatures). The plugin rewrites the RecNet name-server lookups, swaps in your own Photon credentials, and disables the client-side guards (EasyAntiCheat, TLS certificate pinning) that would otherwise reject a non-official server.
+It does this entirely client-side with [Harmony](https://harmony.pardeike.net/) patches — no game files are modified on disk. The plugin rewrites the RecNet name-server lookups, swaps in your own Photon credentials, and disables the client-side guards (EasyAntiCheat, TLS certificate pinning, image signature verification) that would otherwise reject a non-official server.
 
-> ⚠️ This disables anti-cheat and certificate validation on the client. Use at your own risk.
+> ⚠️ This disables anti-cheat, certificate validation, and RSA signature verification on the client. Use at your own risk.
 
 ## Safety
 
 Using BepInEx plugins may cause anti-virus scanners or Windows Defender to pick it up as a threat.
 
-If you don't trust the complied .DLL, you can build it yourself.
+If you don't trust the compiled .DLL, you can build it yourself.
 
 See https://github.com/djdevin/recnet-plugin#from-source
 
@@ -22,9 +22,10 @@ See https://github.com/djdevin/recnet-plugin#from-source
 | Photon override | `Patches/PhotonPatches.cs` | Replaces the Realtime / Voice / Chat App IDs (and optionally the Photon name server + port) with your own. |
 | EAC bypass | `Patches/EACPatches.cs` | Forces EasyAntiCheat "ready" and stubs the challenge-response so the client connects without the official anti-cheat. |
 | TLS bypass | `Patches/DisableTLSPinning.cs` | Skips server-certificate validation so a custom server's cert is accepted. |
-| Promise stub | `Patches/PromisePatch.cs` | Allows custom global-metadata.dat files without the game crashing. |
+| Image signing bypass | `Patches/ImageSigningPatch.cs` | Forces the mscorlib RSA verify to succeed, so images your server serves load without being signed by Rec Room's key. **On by default.** |
 | CheatManager handling | `Plugin.cs` | Deactivates the in-game `CheatManager` (which would otherwise boot you from rooms) while keeping it resolvable for account creation / login. |
 | DUID mismatch workaround | `Patches/DUIDMismatchPatch.cs` | Forces the device-id mismatch check to "no mismatch" so the Create Account hang (below) is skipped. **On by default**; no-op on healthy machines. |
+| DUID diagnostics | `Patches/DUIDProbePatch.cs`, `Patches/CorruptDUIDPatch.cs`, `Patches/DeviceIdResponsePatch.cs` | Investigation tooling for the hang: PlayerPrefs/DUID call logging, deliberately corrupting or restoring the stored id, and rewriting the `deviceId` response in flight. All off by default — see [Configuration](#configuration). |
 
 ## The Create Account / DUID hang
 
@@ -62,16 +63,18 @@ _Looking for a custom RecNet server?_ Try https://github.com/djdevin/recflare
 
 ## Installing
 
-1. Download the game using https://github.com/SteamRE/DepotDownloader. The manifest ID is `7859140924515540835`.  
-Example: `depotdownloader -app 471710 -depot 471711 -manifest 7859140924515540835`
-**You must use this specific version.**
-3. Install BepInEx to the game. See https://docs.bepinex.dev/articles/user_guide/installation/index.html. **Note that you must use version 6!**
+1. Download the game using https://github.com/SteamRE/DepotDownloader. The manifest ID is `6426603215211043630` (the **20230414** build).
+   Example: `depotdownloader -app 471710 -depot 471711 -manifest 6426603215211043630`
+   **You must use this specific version.** Rec Room's type and method names are obfuscated and
+   re-rolled every build, so the patches only bind against the build they were written for.
+2. Install BepInEx to the game. See https://docs.bepinex.dev/articles/user_guide/installation/index.html. **Note that you must use version 6!**
+3. Launch the game once so BepInEx generates its `config/` folder and the IL2CPP interop assemblies.
 
 Alternatively, use the [RecFlare client](https://github.com/djdevin/recflare-client)
 
 ### From release
 
-1. Download a release from [/releases](/releases)
+1. Download a release from [Releases](https://github.com/djdevin/recnet-plugin/releases)
 2. Drop the `.dll` file into `BepInEx/plugins/`
 
 ### From source
@@ -124,6 +127,8 @@ Inside `config`, edit the `net.rec.plugin.cfg` file and update as needed:
 **[Signing]**
 - `Disable Signature Verification` — stops the client checking that images are signed with Rec Room's
   private key, so your own server can serve images. **On by default**; leave it alone.
+  > ⚠️ This forces **all** mscorlib RSA verification to pass, not just image signatures. TLS is
+  > unaffected (BestHTTP uses its own bundled BouncyCastle).
 
 **[Advanced]**
 - `Enabled Advanced Settings` — must be `true` to apply the custom Photon name server / port below.
@@ -144,7 +149,7 @@ tools** used to investigate the hang. Leave them at their defaults unless you're
 | Path | Purpose |
 | --- | --- |
 | `Plugin.cs` | Plugin entry point, config bindings, Harmony bootstrap |
-| `Patches/` | Harmony patches (HTTP, EAC, TLS, Photon, DUID) |
+| `Patches/` | Harmony patches (HTTP, EAC, TLS, Photon, image signing, DUID) |
 | `CLAUDE.md` | Developer notes: build gotchas, IL2CPP/interop caveats, and the full DUID-hang investigation |
 | `RecNetPlugin.csproj` | Build config + interop references (driven by `GamePath`), and the `DeployPlugin` post-build copy |
 | `GamePath.props.example` | Template for your local `GamePath.props` |
