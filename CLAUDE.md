@@ -113,9 +113,10 @@ check (forces verify-true); it does not swap in a replacement key.
 
 Two things to remember:
 
-- **Blast radius:** forcing verify-true affects *all* mscorlib RSA verification, not just images.
-  BestHTTP's TLS uses its own bundled BouncyCastle, so cert validation appears unaffected — inferred
-  from assembly layout, not proven. Keep it behind the config knob.
+- **Blast radius is the point, not a wart.** Forcing verify-true affects *all* mscorlib RSA
+  verification, not just images. That breadth is load-bearing — see the warning below. BestHTTP's TLS
+  uses its own bundled BouncyCastle, so cert validation appears unaffected — inferred from assembly
+  layout, not proven. Keep it behind the config knob.
 - **If it ever stops working:** images failing to load with the knob on means verification moved off
   mscorlib RSA onto `BestHTTP.SecureProtocol.Org.BouncyCastle`; the equivalent hooks there are the
   **concrete** `RsaDigestSigner`/`PssSigner.VerifySignature` (not the abstract `ISigner` — gotcha 3).

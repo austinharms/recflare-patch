@@ -29,6 +29,7 @@ public class Plugin : BasePlugin
     public static ConfigEntry<string> DeviceIdResponseOverride { get; private set; }
     public static ConfigEntry<int> DeviceIdResponseStatus { get; private set; }
     public static ConfigEntry<bool> DisableSignatureVerification { get; private set; }
+    public static ConfigEntry<bool> DisableAmplitudeAnalytics { get; private set; }
 
     private static bool _corruptDone;
 
@@ -51,7 +52,9 @@ public class Plugin : BasePlugin
         DeviceIdResponseOverride = Config.Bind("Advanced", "DeviceId Response Override", "", "Replace the body of the PlayerReporting/v1/deviceId response with this text, to test what shape the client will accept. Empty = leave the server's response alone.");
         DeviceIdResponseStatus = Config.Bind("Advanced", "DeviceId Response Status", 200, "HTTP status to force on the PlayerReporting/v1/deviceId response. Only applies when the override body is set.");
 
-        DisableSignatureVerification = Config.Bind("Signing", "Disable Signature Verification", true, "Force RSA signature verification to succeed (ON by default), so the client stops checking that images are signed with Rec Room's private key. This is what lets a self-hosted server serve its own images without the baked-in modulus matching. NOTE: this forces ALL mscorlib RSA verification to pass, not just image signatures.");
+        DisableSignatureVerification = Config.Bind("Signing", "Disable Signature Verification", true, "Force RSA signature verification to succeed (ON by default), so the client stops checking that images are signed with Rec Room's private key. This is what lets a self-hosted server serve its own images without the baked-in modulus matching. NOTE: this forces ALL mscorlib RSA verification to pass, not just image signatures — that breadth is deliberate, see CLAUDE.md.");
+
+        DisableAmplitudeAnalytics = Config.Bind("Analytics", "Disable Amplitude Analytics", true, "Drop every AmplitudeAnalyticsClient.Log* call (ON by default) — LogEventAsync, LogPrevSessionEventAsync, LogSerializedEventAsync, LogIdentifyAsync and LogOutOfSessionEvent — so the client never ships telemetry events to Amplitude. A self-hosted server has no use for them. Set false to let analytics through.");
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly);
 
