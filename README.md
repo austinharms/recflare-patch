@@ -8,6 +8,8 @@ It does this entirely client-side with [Harmony](https://harmony.pardeike.net/) 
 
 ## Projects
 
+[<img width="100" height="100" alt="image" src="https://github.com/user-attachments/assets/f0b91aa3-49f5-4077-8eb9-5ae676888709" />](https://www.recflare.net)
+
 This plugin powers [RecFlare](https://www.recflare.net) - an open source, cloud-native Rec Room server.
 
 ## Safety
