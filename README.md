@@ -6,6 +6,10 @@ It does this entirely client-side with [Harmony](https://harmony.pardeike.net/) 
 
 > ⚠️ This disables anti-cheat, certificate validation, and RSA signature verification on the client. Use at your own risk.
 
+## Projects
+
+This plugin powers [RecFlare](https://www.recflare.net) - an open source, cloud-native Rec Room server.
+
 ## Safety
 
 Using BepInEx plugins may cause anti-virus scanners or Windows Defender to pick it up as a threat.
