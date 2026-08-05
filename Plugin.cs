@@ -29,7 +29,7 @@ public class Plugin : BasePlugin
     public static ConfigEntry<string> DeviceIdResponseOverride { get; private set; }
     public static ConfigEntry<int> DeviceIdResponseStatus { get; private set; }
     public static ConfigEntry<bool> DisableSignatureVerification { get; private set; }
-    public static ConfigEntry<bool> DisableAmplitudeAnalytics { get; private set; }
+    public static ConfigEntry<bool> DisableTelemetry { get; private set; }
 
     private static bool _corruptDone;
 
@@ -54,7 +54,11 @@ public class Plugin : BasePlugin
 
         DisableSignatureVerification = Config.Bind("Signing", "Disable Signature Verification", true, "Force RSA signature verification to succeed (ON by default), so the client stops checking that images are signed with Rec Room's private key. This is what lets a self-hosted server serve its own images without the baked-in modulus matching. NOTE: this forces ALL mscorlib RSA verification to pass, not just image signatures — that breadth is deliberate, see CLAUDE.md.");
 
-        DisableAmplitudeAnalytics = Config.Bind("Analytics", "Disable Amplitude Analytics", true, "Drop every AmplitudeAnalyticsClient.Log* call (ON by default) — LogEventAsync, LogPrevSessionEventAsync, LogSerializedEventAsync, LogIdentifyAsync and LogOutOfSessionEvent — so the client never ships telemetry events to Amplitude. A self-hosted server has no use for them. Set false to let analytics through.");
+        DisableTelemetry = Config.Bind("Analytics", "Disable Telemetry", true, "Stop the client reporting to third-party telemetry services (ON by default). Covers: Amplitude analytics (every AmplitudeAnalyticsClient.Log* call plus any upload to amplitude.com, so batches queued in earlier sessions can't be flushed later); the data-collection endpoint (any host whose name starts with 'datacollection', e.g. datacollection.recflare.net); and Backtrace crash reports, minidumps and metrics to submit.backtrace.io. Blocked uploads get a synthetic 200 so the client carries on as if they had been accepted. It also asks Unity's own Analytics and Performance Reporting to switch off, but that part is KNOWN NOT TO WORK on this game build — those send from native engine code and the opt-out is refused, so perf-events.cloud.unity3d.com uploads continue; see the [UNITY-TELEMETRY] line in LogOutput.log. Not covered: RudderStack, gamesight, and minidumps sent by the native crash handler on the launch after a hard crash. Set false to let all of it through.");
+
+        // Not a patch — Unity's telemetry has a real opt-out, so we just set it. Retried from
+        // OnSceneLoaded until it takes, since the native setters can refuse this early.
+        Patches.UnityTelemetryPatch.Apply();
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly);
 
@@ -63,6 +67,9 @@ public class Plugin : BasePlugin
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        // No-op once the switches have stuck; must run before the early return below.
+        Patches.UnityTelemetryPatch.Apply();
+
         // CheatManager boots us out of rooms when it runs, but it's ALSO the DUID service the DI
         // container resolves for account creation / login (destroying it removes that service).
         // So instead of destroying it, *deactivate* the GameObject: it stops running (no Update /

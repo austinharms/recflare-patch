@@ -121,6 +121,105 @@ Two things to remember:
   mscorlib RSA onto `BestHTTP.SecureProtocol.Org.BouncyCastle`; the equivalent hooks there are the
   **concrete** `RsaDigestSigner`/`PssSigner.VerifySignature` (not the abstract `ISigner` — gotcha 3).
 
+## Analytics / telemetry
+
+**One knob**, `[Analytics] Disable Telemetry`, default **true**, gating all three patch files below.
+One switch is the deliberate choice: nobody wants Amplitude gone but the collector alive, and per-vendor
+knobs are just more ways to end up half-configured.
+
+**But they are not one mechanism.** Each vendor sends over a different stack, and *that*, not the
+hostname, is what decides how you block it — a host blocklist would be dead code for two of these four:
+
+| Vendor | Patch file | Stack it sends over | How it's blocked |
+| --- | --- | --- | --- |
+| Amplitude | `AmplitudePatch.cs` | BestHTTP | `Log*` prefixes + host block on `amplitude.com` |
+| Data collector | `AmplitudePatch.cs` | BestHTTP | host block on first label `datacollection*` |
+| Backtrace | `BacktracePatch.cs` | **UnityWebRequest** | `BacktraceHttpClient.Post` ×4 |
+| Unity Analytics | `UnityTelemetryPatch.cs` | **native (neither)** | Unity's own opt-out properties — **doesn't work, see below** |
+
+The collector is matched on the hostname's *first label*, not a fixed domain, so it stays right across
+deployments (`…recflare.net`, `…rec.net`). It's a first-party endpoint, hence its own knob — you may
+want Amplitude gone but the collector alive, or the reverse.
+
+The collector is matched on the hostname's *first label*, not a fixed domain, so it stays right across
+deployments (`…recflare.net`, `…rec.net`). It's a first-party endpoint, hence its own knob — you may
+want Amplitude gone but the collector alive, or the reverse.
+
+**Blocking the `Log*` entrypoints is not sufficient, and this is the trap.** `LogEventAsync`,
+`LogSerializedEventAsync`, `LogIdentifyAsync` etc. only *queue*; the queue is persisted to the
+`pending_room_stats` PlayerPref and drained later by the client's own flush coroutines. So a batch
+queued before the plugin existed (or during a session where a `Log*` door we didn't cover was used)
+still ships on the next launch, and mitmproxy keeps showing `api2.amplitude.com` even though
+LogOutput.log says `[AMPLITUDE] ... blocked LogEventAsync`. **Symptom-to-cause: prefixes visibly
+firing + traffic still leaving means you blocked the producer, not the sender.**
+
+The send path, for the record: `AmplitudeAnalyticsClient` → transport interface `FOMPBHDLPDO`
+(`MAJANJBIDMF` / `KBECOPLKGHL`) → concrete impl **`MHBPNDOGOLG` in `RecNet.Runtime.dll`** → BestHTTP.
+Note `RecRoom.Analytics.Runtime.dll` has *no* assembly reference to BestHTTP/UnityWebRequest — the
+transport is injected, so grepping the analytics assembly for an HTTP type finds nothing.
+
+So the actual block is at the BestHTTP layer: a second prefix on
+`HTTPManager.SendRequest(HTTPRequest)` (the same method `SendRequestPatch` hooks) that drops any
+request to a blocked host. Two properties worth keeping:
+
+- **No obfuscated names.** `HTTPManager`/`HTTPRequest`/`HTTPResponse` are BestHTTP's own types, so
+  this survives a game upgrade even though every name in the analytics path above will re-roll.
+- **It fakes a 200, not a failure.** We build an `HTTPResponse` (status 200, Amplitude's real body
+  shapes: `success` for `/identify`, the `{"code":200,...}` envelope otherwise; `{"success":true}` for
+  the collector, whose shape we don't know — an empty body would trip the RecNet wrapper's "Response
+  was empty"), set `State = Finished`, and invoke `request.Callback` inline. The transport resolves its
+  promise, the client considers the batch delivered and clears `pending_room_stats`. Failing the
+  request instead would leave the batch queued and retried every session forever.
+
+RudderStack (`get_OutOfSessionRudderStackKey`) and gamesight are *not* covered — add their hosts to
+`AmplitudeDomains` / `CollectorLabelPrefixes` if they need to go too.
+
+### Backtrace (`submit.backtrace.io`) — UnityWebRequest, not BestHTTP
+
+`Backtrace.Unity.dll` references `UnityEngine.UnityWebRequestModule` and nothing else HTTP-shaped, so
+the BestHTTP host block never sees it. Two things make this one easy: the SDK is a third-party package
+and therefore **unobfuscated** (no per-build churn to survive), and every submission it makes — crash
+reports, minidumps, metrics — funnels through the four **concrete** `BacktraceHttpClient.Post`
+overloads (`IBacktraceHttpClient` is the interface — gotcha 3).
+
+The overloads split by *who sends the request*, which decides the patch shape:
+
+- `void Post(url, jObject, onComplete)` — the SDK sends internally. Prefix + skip, then invoke
+  `onComplete(200, false, "{}")` ourselves. Answering it matters: the metrics queue holds the batch
+  until the callback reports success, so a silent skip means it retries forever.
+- `UnityWebRequest Post(…)` ×3 — builds the request and hands it back; **the caller** sends it
+  (`yield return request.SendWebRequest()`). A prefix returning null gets dereferenced, so instead a
+  *postfix* repoints the finished request at `http://127.0.0.1:1/` — nothing listens, so it fails
+  connection-refused in microseconds with no packet leaving the box, and the SDK takes its ordinary
+  offline path. Repointing beats rebuilding: the SDK keeps its own handlers and headers, so there's
+  nothing to guess about what the caller dereferences next.
+
+Not covered: `RecRoomNativeClient` installs a native crash handler, and a minidump it uploads on the
+launch after a hard crash never passes through managed code. A multipart minidump POST to
+submit.backtrace.io with the hooks visibly firing is that path.
+
+### Unity Analytics / Performance Reporting (`perf-events.cloud.unity3d.com`) — ⚠️ UNSOLVED, and fine
+
+**Confirmed not working on the 20230414 build; accepted as-is — don't re-litigate it.** The setters are
+refused, `enabled` reads back `True` on every attempt, and the uploads keep flowing. The other three
+`[Analytics]` knobs all confirmed dropping at runtime, and they account for the bulk of the traffic, so
+this one is noise-floor. If it ever has to go for real it needs a hosts-file/DNS block or a native
+hook — there is no managed lever. What follows is why, kept because the *approach* is right even
+though this build refuses it.
+
+
+`UnityEngine.Analytics.Analytics` and `PerformanceReporting` are thin managed shims over native engine
+code; the uploads happen inside the player, on no managed send path and over neither HTTP stack. What
+they do have is a documented opt-out, so `UnityTelemetryPatch` just sets it: `PerformanceReporting.
+enabled = false`, `Analytics.enabled = false`, `deviceStatsEnabled = false`, `limitUserTracking = true`.
+
+Two traps, both handled there: these are native setters that can be **silently refused**, so the patch
+*reads the properties back* and only believes it worked if they read false — the `[UNITY-TELEMETRY]`
+log line is the proof, the assignment isn't. (That read-back is what caught this build refusing them;
+without it the knob would have looked like it worked.) And since "not initialised yet" was the leading
+theory for the refusal, it retries from `OnSceneLoaded`, capped at 5 attempts — which ruled that theory
+out, because all five read back `True`.
+
 ## Inspecting the game
 
 Use **Mono.Cecil** for static metadata/signature checks (accessibility, abstract-ness, exact param
